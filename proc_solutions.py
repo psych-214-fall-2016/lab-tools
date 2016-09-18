@@ -153,7 +153,6 @@ def main():
     elif command == 'check':
         for exercise_dir in exercise_sdirs(start_path):
             check_solutions(exercise_dir)
-        check_solution(start_path, 'hello.py')
     else:
         raise RuntimeError('Invalid command ' + command)
 
