@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """ Process Google Python class exercises
 
 Check the solutions run correctly:
@@ -39,6 +40,16 @@ That results in the equivalent of::
     cd exercise_name
     python solution/another_exercise.py some_file.txt
     python solution/another_exercise.py another_file.txt
+
+***********
+Definitions
+***********
+
+An exercise is a Python script that runs from a particular directory.
+
+The directory from which the script should be executed is the "exercise
+directory".  This is the directory below the directory containing
+the solution.
 """
 # Copyright 2016 Matthew Brett
 # Licensed under the 2-clause BSD license.  See LICENSE file.
@@ -52,6 +63,7 @@ from glob import glob
 from os.path import join as pjoin, basename, isdir, isfile, abspath, splitext
 from subprocess import check_call
 from ast import literal_eval
+import argparse
 
 
 def find_exercises(exercise_dir):
@@ -144,9 +156,18 @@ def check_solution(exercise_dir, solution_fname):
         os.chdir(cwd)
 
 
+def get_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', default='check', nargs='?',
+                        help='one of {check, write}, default: check')
+    parser.add_argument('start_path', default=os.getcwd(), nargs='?',
+                        help='exercise directory (default: current directory)')
+    return parser
+
+
 def main():
-    command = sys.argv[1] if len(sys.argv) > 1 else 'check'
-    start_path = sys.argv[2] if len(sys.argv) > 2 else os.getcwd()
+    args = get_parser().parse_args()
+    command, start_path = args.command, args.start_path
     if command == 'write':
         for exercise_dir in exercise_sdirs(start_path):
             rewrite_exercise_dir(exercise_dir)
