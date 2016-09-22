@@ -103,6 +103,7 @@ def process_config(config):
     # Fill in solution defaults
     config = deepcopy(config)
     soln_dir = config['solution_dir']
+    auto_check = config.get('auto_check', False)
     one_down = abspath(pjoin(soln_dir, '..'))
     namespace = {'sys_exe': sys.executable}
     for name, info in config['solution'].items():
@@ -113,7 +114,8 @@ def process_config(config):
             info['out_path'] = pjoin(one_down, base)
         out_dir = dirname(info['out_path'])
         if not 'checks' in info:
-            info['checks'] = [{'command': ['{sys_exe}', '{in_path}']}]
+            info['checks'] =  ([{'command': ['{sys_exe}', '{in_path}']}]
+                               if auto_check else [])
         for check in info['checks']:
             if not 'cwd' in check:
                 check['cwd'] = out_dir
