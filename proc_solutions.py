@@ -60,17 +60,102 @@ import os
 import sys
 import re
 from glob import glob
-from os.path import join as pjoin, basename, isdir, isfile, abspath, splitext
+from os.path import (join as pjoin, dirname, basename, isfile, abspath,
+                     splitext)
 from subprocess import check_call
-from ast import literal_eval
+from copy import deepcopy
 import argparse
 
+STRING_TYPE = str if sys.version_info[0] > 2 else basestring
 
-def find_exercises(exercise_dir):
-    soln_dir = pjoin(exercise_dir, 'solution')
-    py_files = glob(pjoin(soln_dir, "*.py"))
-    return [(pjoin(exercise_dir, basename(py_file)), py_file)
-            for py_file in py_files]
+import pytoml as toml
+
+TOML_FNAMES = ('solution.toml', 'solutions.toml', '.solution.toml',
+               '.solutions.toml')
+SOLUTION_DIRNAMES = ('solution', 'solutions')
+
+
+def _get_config(solution_dir):
+    config = {'solution_dir': abspath(solution_dir),
+              'solution': {}}
+    for fname in TOML_FNAMES:
+        toml_fname = pjoin(solution_dir, fname)
+        if not isfile(toml_fname):
+            continue
+        with open(toml_fname, 'rt') as conffile:
+            config.update(toml.loads(conffile.read()))
+        break
+    return config
+
+
+def format_values(value, namespace):
+    if hasattr(value, 'keys'):
+        return {key: format_values(value, namespace)
+                for key, value in value.items()}
+    if isinstance(value, list):
+        return [format_values(v, namespace) for v in value]
+    if isinstance(value, STRING_TYPE):
+        return value.format(**namespace)
+    return value
+
+
+def process_config(config):
+    # Fill in solution defaults
+    config = deepcopy(config)
+    soln_dir = config['solution_dir']
+    one_down = abspath(pjoin(soln_dir, '..'))
+    namespace = {'sys_exe': sys.executable}
+    for name, info in config['solution'].items():
+        base = name + '.py'
+        in_path = abspath(pjoin(soln_dir, base))
+        info['in_path'] = in_path
+        if not 'out_path' in info:
+            info['out_path'] = pjoin(one_down, base)
+        out_dir = dirname(info['out_path'])
+        if not 'checks' in info:
+            info['checks'] = [{'command': ['{sys_exe}', '{in_path}']}]
+        for check in info['checks']:
+            if not 'cwd' in check:
+                check['cwd'] = out_dir
+        namespace['in_path'] = in_path
+        config['solution'][name] = format_values(info, namespace)
+    return config
+
+
+def dir_to_info(solution_dir):
+    """ Load solution configurations from toml file
+    """
+    config = _get_config(solution_dir)
+    if config.get('listed_only', False):
+        return process_config(config)
+    for solution_fname in glob(pjoin(solution_dir, '*.py')):
+        name = basename(splitext(solution_fname)[0])
+        if not name in config['solution']:
+            config['solution'][name] = {}
+    return process_config(config)
+
+
+def find_solution_dirs(root_dir):
+    """ ``solution`` or ``solutions`` directory, or containing toml file
+    """
+    soln_dirs = []
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        for dn in dirnames:
+            if dn in SOLUTION_DIRNAMES:
+                soln_dirs.append(pjoin(dirpath, dn))
+        for fn in filenames:
+            if fn in TOML_FNAMES:
+                soln_dirs.append(dirpath)
+    return soln_dirs
+
+
+def get_solution_infos(root_dir):
+    """ Return solution information dictionaries for input path `root_dir`
+    """
+    solution_infos = []
+    for solution_dir in find_solution_dirs(root_dir):
+        solution_infos.append(dir_to_info(solution_dir))
+    return solution_infos
 
 
 def process_solution(solution_contents):
@@ -91,7 +176,7 @@ def process_solution(solution_contents):
     return ''.join(exercise_contents)
 
 
-def write_solution(solution_fname, exercise_fname):
+def write_exercise(solution_fname, exercise_fname):
     with open(solution_fname, 'rt') as fobj:
         solution = fobj.read()
     exercise = process_solution(solution)
@@ -99,61 +184,15 @@ def write_solution(solution_fname, exercise_fname):
         fobj.write(exercise)
 
 
-def rewrite_exercise_dir(exercise_dir):
-    for exercise_fname, solution_fname in find_exercises(exercise_dir):
-        write_solution(solution_fname, exercise_fname)
+def rewrite_exercise(info):
+    if not info.get('skip_write', False):
+        write_exercise(info['in_path'], info['out_path'])
 
 
-def exercise_sdirs(start_path):
-    sdirs = []
-    for path in os.listdir(start_path):
-        full_path = pjoin(start_path, path)
-        if isdir(full_path) and isdir(pjoin(full_path, 'solution')):
-            sdirs.append(full_path)
-    return sdirs
-
-
-def check_solutions(exercise_dir):
-    for exercise_fname, solution_fname in find_exercises(exercise_dir):
-        check_solution(exercise_dir, solution_fname)
-
-
-def get_params(solution_fname):
-    """ Get extra parameters for running solution
-
-    Parameters
-    ----------
-    solution_fname : str
-        Path to solution ".py" file
-
-    Returns
-    -------
-    params_list : list of lists
-        List of lists where each list contains a sequence of strings that will
-        be passed to the script on the command line.
-    """
-    params_fname = splitext(solution_fname)[0] + '.params'
-    if not isfile(params_fname):
-        return [[]]
-    with open(params_fname, 'rt') as fobj:
-        contents = fobj.read()
-    params = literal_eval(contents)
-    # Parameters should be list, or list of lists
-    return params if isinstance(params[0], list) else [params]
-
-
-def check_solution(exercise_dir, solution_fname):
-    print('Checking ' + solution_fname)
-    fname = abspath(solution_fname)
-    cwd = os.getcwd()
-    # Allow for commands that need parameters
-    parameters = get_params(solution_fname)
-    try:
-        os.chdir(exercise_dir)
-        for params in parameters:
-            check_call([sys.executable, fname] + params)
-    finally:
-        os.chdir(cwd)
+def check_solution(info):
+    print('Checking ' + info['in_path'])
+    for check in info['checks']:
+        check_call(check['command'], cwd=check['cwd'])
 
 
 def get_parser():
@@ -168,14 +207,17 @@ def get_parser():
 def main():
     args = get_parser().parse_args()
     command, start_path = args.command, args.start_path
-    if command == 'write':
-        for exercise_dir in exercise_sdirs(start_path):
-            rewrite_exercise_dir(exercise_dir)
-    elif command == 'check':
-        for exercise_dir in exercise_sdirs(start_path):
-            check_solutions(exercise_dir)
-    else:
+    if command not in ('write', 'check'):
         raise RuntimeError('Invalid command ' + command)
+    solution_sets = get_solution_infos(start_path)
+    if command == 'write':
+        for infos in solution_sets:
+            for name, info in infos['solution'].items():
+                rewrite_exercise(info)
+    elif command == 'check':
+        for infos in solution_sets:
+            for name, info in infos['solution'].items():
+                check_solution(info)
 
 
 if __name__ == '__main__':
