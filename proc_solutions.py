@@ -90,8 +90,8 @@ def _get_config(solution_dir):
 
 def format_values(value, namespace):
     if hasattr(value, 'keys'):
-        return {key: format_values(value, namespace)
-                for key, value in value.items()}
+        return dict([(k, format_values(v, namespace))
+                     for k, v in value.items()])
     if isinstance(value, list):
         return [format_values(v, namespace) for v in value]
     if isinstance(value, STRING_TYPE):
@@ -178,17 +178,17 @@ def process_solution(solution_contents):
     return ''.join(exercise_contents)
 
 
-def write_exercise(solution_fname, exercise_fname):
+def write_exercise(solution_fname, exercise_fname, processor=process_solution):
     with open(solution_fname, 'rt') as fobj:
         solution = fobj.read()
-    exercise = process_solution(solution)
+    exercise = processor(solution)
     with open(exercise_fname, 'wt') as fobj:
         fobj.write(exercise)
 
 
-def rewrite_exercise(info):
+def rewrite_exercise(info, processor=process_solution):
     if not info.get('skip_write', False):
-        write_exercise(info['in_path'], info['out_path'])
+        write_exercise(info['in_path'], info['out_path'], processor)
 
 
 def check_solution(info):
@@ -209,17 +209,23 @@ def get_parser():
 def main():
     args = get_parser().parse_args()
     command, start_path = args.command, args.start_path
-    if command not in ('write', 'check'):
-        raise RuntimeError('Invalid command ' + command)
     solution_sets = get_solution_infos(start_path)
     if command == 'write':
         for infos in solution_sets:
             for name, info in infos['solution'].items():
                 rewrite_exercise(info)
+    elif command == 'write-solutions':
+        print("Warning - writing solutions over exercises")
+        for infos in solution_sets:
+            for name, info in infos['solution'].items():
+                rewrite_exercise(info, lambda txt : txt)
+        print("Warning - run 'write' to write exercises")
     elif command == 'check':
         for infos in solution_sets:
             for name, info in infos['solution'].items():
                 check_solution(info)
+    else:
+        raise RuntimeError('Invalid command ' + command)
 
 
 if __name__ == '__main__':
