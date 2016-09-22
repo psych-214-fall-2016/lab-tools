@@ -105,7 +105,9 @@ def process_config(config):
     soln_dir = config['solution_dir']
     auto_check = config.get('auto_check', False)
     one_down = abspath(pjoin(soln_dir, '..'))
-    namespace = {'sys_exe': sys.executable}
+    namespace = {'sys_exe': sys.executable,
+                 'solution_dir': soln_dir,
+                 'one_down': one_down}
     for name, info in config['solution'].items():
         base = name + '.py'
         in_path = abspath(pjoin(soln_dir, base))
