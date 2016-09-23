@@ -60,7 +60,7 @@ import os
 import sys
 import re
 from glob import glob
-from os.path import (join as pjoin, dirname, basename, isfile, abspath,
+from os.path import (join as pjoin, dirname, basename, isfile, realpath,
                      splitext)
 from subprocess import check_call
 from copy import deepcopy
@@ -76,7 +76,7 @@ SOLUTION_DIRNAMES = ('solution', 'solutions')
 
 
 def _get_config(solution_dir):
-    config = {'solution_dir': abspath(solution_dir),
+    config = {'solution_dir': realpath(solution_dir),
               'solution': {}}
     for fname in TOML_FNAMES:
         toml_fname = pjoin(solution_dir, fname)
@@ -104,13 +104,13 @@ def process_config(config):
     config = deepcopy(config)
     soln_dir = config['solution_dir']
     auto_check = config.get('auto_check', False)
-    one_down = abspath(pjoin(soln_dir, '..'))
+    one_down = realpath(pjoin(soln_dir, '..'))
     namespace = {'sys_exe': sys.executable,
                  'solution_dir': soln_dir,
                  'one_down': one_down}
     for name, info in config['solution'].items():
         base = name + '.py'
-        in_path = abspath(pjoin(soln_dir, base))
+        in_path = realpath(pjoin(soln_dir, base))
         info['in_path'] = in_path
         if not 'out_path' in info:
             info['out_path'] = pjoin(one_down, base)
@@ -140,17 +140,17 @@ def dir_to_info(solution_dir):
 
 
 def find_solution_dirs(root_dir):
-    """ ``solution`` or ``solutions`` directory, or containing toml file
+    """ Find directories with matching filenames, or with TOML file
     """
-    soln_dirs = []
+    soln_dirs = set()
     for dirpath, dirnames, filenames in os.walk(root_dir):
         for dn in dirnames:
             if dn in SOLUTION_DIRNAMES:
-                soln_dirs.append(pjoin(dirpath, dn))
+                soln_dirs.add(pjoin(dirpath, dn))
         for fn in filenames:
             if fn in TOML_FNAMES:
-                soln_dirs.append(dirpath)
-    return soln_dirs
+                soln_dirs.add(dirpath)
+    return [realpath(d) for d in sorted(soln_dirs)]
 
 
 def get_solution_infos(root_dir):
