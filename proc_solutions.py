@@ -174,8 +174,6 @@ def process_solution(solution_contents):
         elif re.match(r"#+ LAB\(end solution\)", sline):
             state = None
         elif state != 'solution':
-            if state == 'replace':
-                line = re.sub(r"#\s*", '', line)
             exercise_contents.append(line)
     return ''.join(exercise_contents)
 
